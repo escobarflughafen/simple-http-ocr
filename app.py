@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from PIL import Image
 import pytesseract
 from openai import OpenAI
@@ -7,11 +8,13 @@ import dotenv
 import logging
 import json
 
+
 dotenv.load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config["DEBUG"] = True
+CORS(app)
 
 # Config logging
 logging.basicConfig(
@@ -31,28 +34,33 @@ logging.info(f"OpenAI initialized, using model {MODEL}.")
 @app.route('/extract-and-format-ocr', methods=['POST'])
 def extractAndFormatOCR():
     """
-    Extracts text from an uploaded image using OCR and formats the text into structured JSON using GPT.
+    Processes input data: image, text, or both, and formats into structured JSON using GPT.
     """
-    # Validate input
-    if 'image' not in request.files:
-        return jsonify({"error": "No image file provided"}), 400
+    # Extract image and text from the request
+    file = request.files.get('image', None)
+    raw_text = request.form.get('text', "").strip()
 
-    file = request.files['image']
-    logging.info("Image file received.")
+    if not file and not raw_text:
+        return jsonify({"error": "You must provide at least an image or text"}), 400
 
-    # Load the image
-    try:
-        image = Image.open(file)
-        logging.info("Image file loaded.")
-    except Exception as e:
-        return jsonify({"error": "Invalid image file", "details": str(e)}), 400
+    ocr_text = ""
+    if file:
+        logging.info("Image file received. Processing OCR...")
+        try:
+            image = Image.open(file)
+            ocr_text = pytesseract.image_to_string(image)
+            logging.info("OCR processing completed.")
+        except Exception as e:
+            logging.error(f"OCR processing failed: {e}")
+            return jsonify({"error": "OCR processing failed", "details": str(e)}), 500
 
-    # Perform OCR using pytesseract
-    try:
-        ocr_text = pytesseract.image_to_string(image)
-        logging.info(f"Image processed by OCR with text {ocr_text}.")
-    except Exception as e:
-        return jsonify({"error": "OCR processing failed", "details": str(e)}), 500
+    # Combine data sources
+    if file and raw_text:
+        combined_text = f"{ocr_text}\n\nAdditional context from user:\n{raw_text}"
+    elif raw_text:
+        combined_text = raw_text
+    else:
+        combined_text = ocr_text
 
     # Call GPT to format the text
     try:
@@ -63,16 +71,18 @@ def extractAndFormatOCR():
                 "content": f"""
                 The following text is extracted from a receipt using OCR:
                 ---
-                {ocr_text}
+                {combined_text}
                 ---
                 Format this text into a valid JSON object that can be parsed by Python's `json.loads()` without any issues.
                 Ensure the JSON:
                 1. Does not include code block markers (e.g., ```json).
                 2. Uses double quotes for all keys and string values.
                 3. Is properly escaped and formatted for JSON standards.
-                4. Includes a "transactions" array with each transaction containing:
+                4. Includes a "transactions" array with each transaction containing these keys:
                     - "Transaction Name"
+                    - "Category"
                     - "Amount" (as a number)
+                    - "Place"
                     - "Date"
                     - "Additional Info" (as null if missing).
                 5. Adds any summary fields if necessary, such as "Total Amount", "Card Type", etc.

@@ -1,0 +1,7 @@
+Flask==2.3.2             # Web framework for building the backend
+Flask-Cors==3.0.10       # Middleware to handle Cross-Origin Resource Sharing (CORS)
+Pillow==10.0.1           # Image processing library (for handling uploaded images)
+pytesseract==0.3.10      # Python wrapper for Tesseract OCR
+openai==0.27.10          # OpenAI Python library for GPT API calls
+python-dotenv==1.0.0     # Load environment variables from .env file
+gunicorn==20.1.0         # Production-ready WSGI HTTP server
